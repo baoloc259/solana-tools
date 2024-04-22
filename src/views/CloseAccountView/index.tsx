@@ -9,7 +9,11 @@ import styles from "./index.module.css";
 import { PublicKey, Transaction } from "@solana/web3.js";
 import { Metaplex } from "@metaplex-foundation/js";
 import { ENV, TokenListProvider } from "@solana/spl-token-registry";
-import { Token, TOKEN_PROGRAM_ID } from "@solana/spl-token";
+import {
+  TOKEN_PROGRAM_ID,
+  TOKEN_2022_PROGRAM_ID,
+  createCloseAccountInstruction,
+} from "@solana/spl-token";
 import { getTokensMetadata } from "utils/getTokensMetadata";
 
 export const CloseAccountView: FC = ({}) => {
@@ -27,6 +31,7 @@ export const CloseAccountView: FC = ({}) => {
   const [message, setMessage] = useState<string>("");
   const [allSelected, setAllSelected] = useState(false);
   const [toClose, setToClose] = useState<string[]>([]);
+  const [isToken2022, setToken2022] = useState<boolean>(false);
 
   async function getUserEmptyAccount() {
     if (!wallet.publicKey) {
@@ -36,14 +41,14 @@ export const CloseAccountView: FC = ({}) => {
     const publickey = wallet.publicKey;
     setIsFetched(false);
 
-    const allTokens:any = [];
+    const allTokens: any = [];
 
     const myHeaders = new Headers();
     myHeaders.append("x-api-key", "AwM0UoO6r1w8XNOA");
 
     const tokenResponse = await fetch(
       "https://api.shyft.to/sol/v1/wallet/all_tokens?network=mainnet-beta&wallet=" +
-      publickey.toBase58(),
+        publickey.toBase58(),
       { method: "GET", headers: myHeaders, redirect: "follow" }
     );
     const tokenInfo = (await tokenResponse.json()).result;
@@ -55,7 +60,10 @@ export const CloseAccountView: FC = ({}) => {
 
     tokens.map((token: any) => {
       const mint = token.address;
-      const logoURI = token.info.image != "" ? token.info.image : "https://arweave.net/WCMNR4N-4zKmkVcxcO2WImlr2XBAlSWOOKBRHLOWXNA";
+      const logoURI =
+        token.info.image != ""
+          ? token.info.image
+          : "https://arweave.net/WCMNR4N-4zKmkVcxcO2WImlr2XBAlSWOOKBRHLOWXNA";
       const tokenAccount = token.associated_account;
       const amount = token.balance;
       let name = token.info.name.trim();
@@ -67,7 +75,7 @@ export const CloseAccountView: FC = ({}) => {
         logoURI: logoURI,
         tokenAccount: tokenAccount,
         mint: mint,
-        amount: amount
+        amount: amount,
       });
     });
 
@@ -82,7 +90,7 @@ export const CloseAccountView: FC = ({}) => {
         "processed"
       );
 
-      const myNFTEmptyAccounts:any = []
+    const myNFTEmptyAccounts: any = [];
 
     const _myNFTEmptyAccounts = splAccounts
       .filter((m) => {
@@ -92,27 +100,31 @@ export const CloseAccountView: FC = ({}) => {
       .map((m) => {
         const tokenAccountaddress = m.pubkey.toBase58();
         const mintAdddress = m.account?.data?.parsed?.info?.mint;
-        const _tokenAccount = allTokens.find((token: any) => token.tokenAccount == tokenAccountaddress);
+        const _tokenAccount = allTokens.find(
+          (token: any) => token.tokenAccount == tokenAccountaddress
+        );
         if (_tokenAccount == undefined) {
           myNFTEmptyAccounts.push({ tokenAccountaddress, mintAdddress });
         }
       });
 
-      console.log(myNFTEmptyAccounts)
+    console.log(myNFTEmptyAccounts);
 
-      
-      const myNFTEmptyAccountsMetadata = await getTokensMetadata(myNFTEmptyAccounts, connection);
-      const userEmptyAccounts = allTokens.concat(myNFTEmptyAccountsMetadata)
+    const myNFTEmptyAccountsMetadata = await getTokensMetadata(
+      myNFTEmptyAccounts,
+      connection
+    );
+    const userEmptyAccounts = allTokens.concat(myNFTEmptyAccountsMetadata);
 
-      userEmptyAccounts.sort(function (a:any, b:any) {
-        if (a.name.toUpperCase() < b.name.toUpperCase()) {
-          return -1;
-        }
-        if (a.name.toUpperCase() > b.name.toUpperCase()) {
-          return 1;
-        }
-        return 0;
-      });
+    userEmptyAccounts.sort(function (a: any, b: any) {
+      if (a.name.toUpperCase() < b.name.toUpperCase()) {
+        return -1;
+      }
+      if (a.name.toUpperCase() > b.name.toUpperCase()) {
+        return 1;
+      }
+      return 0;
+    });
 
     setEmptyAccounts(userEmptyAccounts);
     setIsFetched(true);
@@ -167,7 +179,7 @@ export const CloseAccountView: FC = ({}) => {
         setIsClosing(true);
         setSuccess(false);
         setMessage("");
-        const nbPerTx = 5;
+        const nbPerTx = 10;
         let nbTx: number;
         if (toClose.length % nbPerTx == 0) {
           nbTx = toClose.length / nbPerTx;
@@ -190,14 +202,26 @@ export const CloseAccountView: FC = ({}) => {
 
           for (let j = nbPerTx * i; j < bornSup; j++) {
             const associatedAddress = new PublicKey(toClose[j]);
+            let closeInstruction;
 
-            const closeInstruction = await Token.createCloseAccountInstruction(
-              TOKEN_PROGRAM_ID,
-              associatedAddress,
-              publickey,
-              publickey,
-              []
-            );
+            if (isToken2022) {
+              closeInstruction = await createCloseAccountInstruction(
+                associatedAddress,
+                publickey,
+                publickey,
+                [],
+                TOKEN_2022_PROGRAM_ID
+              );
+            } else {
+              closeInstruction = await createCloseAccountInstruction(
+                associatedAddress,
+                publickey,
+                publickey,
+                [],
+                TOKEN_PROGRAM_ID
+              );
+            }
+
             Tx.add(closeInstruction);
           }
 
@@ -238,6 +262,14 @@ export const CloseAccountView: FC = ({}) => {
   const UnselectAll = () => {
     setToClose([]);
     setAllSelected(false);
+  };
+
+  const SetToken2022 = () => {
+    setToken2022(true);
+  };
+
+  const UnsetToken2022 = () => {
+    setToken2022(false);
   };
 
   return (
@@ -284,6 +316,22 @@ export const CloseAccountView: FC = ({}) => {
                     <div>
                       {emptyAccounts.length ? (
                         <div className="flex justify-center">
+                          {!isToken2022 ? (
+                            <button
+                              className="btn mx-2"
+                              onClick={() => SetToken2022()}
+                            >
+                              Set Token 2022
+                            </button>
+                          ) : (
+                            <button
+                              className="btn mx-2"
+                              onClick={() => UnsetToken2022()}
+                            >
+                              Unset Token 2022
+                            </button>
+                          )}
+
                           {!allSelected ? (
                             <button
                               className="btn mx-2"
